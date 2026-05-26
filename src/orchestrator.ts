@@ -12,6 +12,8 @@ const CHIME_IN = (process.env.CHIME_IN ?? "true").toLowerCase() === "true";
 const MODEL_PERSONA = process.env.MODEL_PERSONA ?? "anthropic/claude-sonnet-4.5";
 const MODEL_ROUTER = process.env.MODEL_ROUTER ?? "anthropic/claude-haiku-4.5";
 const CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
+const COMMUNITY_CHANNEL_ID = process.env.DISCORD_COMMUNITY_CHANNEL_ID;
+const COMMUNITY_PERSONA_ID = process.env.COMMUNITY_PERSONA_ID ?? "nico";
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const HISTORY_LIMIT = 30;
 
@@ -103,22 +105,33 @@ async function runPersona(persona: Persona) {
   }
 }
 
-async function handleCeoMessage(text: string) {
+async function handleCeoMessage(text: string, channelId: string) {
+  const isCommunity = channelId === COMMUNITY_CHANNEL_ID;
   record({
     ts: new Date().toISOString(),
     authorId: "ceo",
-    authorName: "Zeeshan",
-    role: "CEO",
+    authorName: isCommunity ? "Community" : "Zeeshan",
+    role: isCommunity ? "Visitor" : "CEO",
     content: text,
   });
 
-  // 1. Direct @mentions take priority (only active personas are matchable).
-  let speakers = matchMentions(text, ACTIVE);
+  let speakers: Persona[];
 
-  // 2. Otherwise, let the router decide (if chime-in mode is on).
-  if (speakers.length === 0 && CHIME_IN) {
-    const recent = buildMessagesFor({ id: "__none__" } as Persona).slice(-12);
-    speakers = await routeMessage({ model: MODEL_ROUTER, recent, roster: ACTIVE });
+  if (isCommunity) {
+    // Community channel: only the community persona (Nico) responds.
+    const nico = ACTIVE.find((p) => p.id === COMMUNITY_PERSONA_ID);
+    if (!nico) {
+      console.warn(`[community] persona "${COMMUNITY_PERSONA_ID}" not active — message ignored`);
+      return;
+    }
+    speakers = [nico];
+  } else {
+    // Leadership channel: existing routing (mentions → router → all personas).
+    speakers = matchMentions(text, ACTIVE);
+    if (speakers.length === 0 && CHIME_IN) {
+      const recent = buildMessagesFor({ id: "__none__" } as Persona).slice(-12);
+      speakers = await routeMessage({ model: MODEL_ROUTER, recent, roster: ACTIVE });
+    }
   }
 
   if (speakers.length === 0) return;
@@ -148,15 +161,17 @@ client.on("messageCreate", async (msg: Message) => {
   console.log(
     `[msg] channel=${msg.channelId} author=${msg.author.tag} bot=${msg.author.bot} webhook=${!!msg.webhookId} text="${msg.content.slice(0, 60)}"`,
   );
-  if (msg.channelId !== CHANNEL_ID) {
-    console.log(`[skip] channel mismatch (expected ${CHANNEL_ID})`);
+  const isLeadership = msg.channelId === CHANNEL_ID;
+  const isCommunity = COMMUNITY_CHANNEL_ID && msg.channelId === COMMUNITY_CHANNEL_ID;
+  if (!isLeadership && !isCommunity) {
+    console.log(`[skip] channel mismatch (expected ${CHANNEL_ID}${COMMUNITY_CHANNEL_ID ? " or " + COMMUNITY_CHANNEL_ID : ""})`);
     return;
   }
   if (msg.webhookId) return;
   if (msg.author.bot) return;
   const text = msg.content.trim();
   if (!text) return;
-  await handleCeoMessage(text);
+  await handleCeoMessage(text, msg.channelId);
 });
 
 client.once("ready", () => {
