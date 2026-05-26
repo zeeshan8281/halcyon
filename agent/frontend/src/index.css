@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    @apply bg-bg text-text font-mono;
+    font-size: 12px;
+    line-height: 1.35;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-image:
+      linear-gradient(rgba(255, 140, 0, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 140, 0, 0.025) 1px, transparent 1px);
+    background-size: 32px 32px;
+    background-attachment: fixed;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #2a2d33;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  .uppercase-label {
+    @apply text-2xs uppercase tracking-[0.15em] text-muted font-mono font-medium;
+  }
+  .section-header {
+    @apply text-2xs uppercase tracking-[0.18em] text-amber font-mono font-semibold;
+  }
+  .pseudo-cursor::after {
+    content: "▊";
+    @apply text-amber animate-pulse-dot ml-[2px];
+  }
+
+  /* Faint horizontal scanlines for the CRT look */
+  .scanlines {
+    position: relative;
+  }
+  .scanlines::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image: repeating-linear-gradient(
+      0deg,
+      rgba(255, 140, 0, 0.035) 0px,
+      rgba(255, 140, 0, 0.035) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    z-index: 1;
+    mix-blend-mode: overlay;
+  }
+  .scanlines::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      ellipse at center,
+      transparent 55%,
+      rgba(0, 0, 0, 0.45) 100%
+    );
+    z-index: 2;
+  }
+}

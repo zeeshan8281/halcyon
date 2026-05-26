@@ -1,59 +1,63 @@
-# Halcyon HQ — Discord leadership channel
+# Halcyon
 
-A Discord bot that turns one channel into your fictional Halcyon leadership team.
-Nine personas (CFO, Head of Data, Chief of Staff, Brand, Legal, Product, Knowledge, LP Relations, Capital Partnerships) post via webhooks, each with their own name + avatar. You message the channel; the router picks 1–3 to chime in. @-mention to address someone directly.
+Halcyon is an agentic micro hedge fund — an autonomous trading agent running on Hyperliquid, with a public dashboard, public wallet, and a fictional leadership team that talks in Discord.
 
-Persistent — everything lives in Discord history + `logs/messages.jsonl`. Survives laptop closes.
+This repo holds the whole project. Two pieces, deployed separately, one brand.
+
+```
+.
+├── src/             ← HQ Discord bot — leadership chat (10 personas)
+├── frontend/        ← (none here; lives under /agent)
+├── agent/           ← Trading agent + terminal-style dashboard
+│   ├── src/         ← Hyperliquid agent (TS, runs the strategy + posts the feed)
+│   └── frontend/    ← React + Vite dashboard (the public-facing terminal UI)
+└── README.md        ← you are here
+```
+
+| Piece | What it is | Deployed as |
+|---|---|---|
+| **HQ Discord bot** (root: `src/`, `package.json`) | A fictional leadership team — 10 personas (CFO, CoS, Brand, Legal, Product, Data, Knowledge, LP, Capital, Community) that respond in one Discord channel via webhooks. Internal-facing. | Railway service `halcyon-bot` |
+| **Trading agent + dashboard** (`agent/`) | The actual trading loop on Hyperliquid + a terminal-style React dashboard at the public URL. The fund itself. | Railway service `halcyon-agent` |
 
 ---
 
-## Setup — Discord side (~5 min)
+## HQ Discord bot — quick start
 
-1. **Create a server** (or use an existing one). Discord app → `+` → "Create My Own".
-2. **Create a text channel** named `#halcyon-leadership`.
-3. **Get the channel ID.** In Discord settings → Advanced → enable Developer Mode. Right-click the channel → "Copy Channel ID". Save it.
-4. **Create 9 webhooks on that channel.** Channel settings → Integrations → Webhooks → "New Webhook" — 9 times, one per persona. Name each one anything (the bot overrides the display name per post). Copy each webhook URL. You'll paste these into `.env` below.
-5. **Create a bot application.** Go to <https://discord.com/developers/applications> → "New Application" → name it "Halcyon HQ". Left sidebar → "Bot" → "Reset Token" → copy the token.
-6. **Enable Message Content Intent.** Same Bot page → scroll down → toggle "MESSAGE CONTENT INTENT" ON. Save.
-7. **Invite the bot to your server.** Left sidebar → "OAuth2" → "URL Generator" → scopes: `bot`. Bot permissions: `Read Messages/View Channels`, `Read Message History`. Copy the generated URL, open it, pick your server, authorize.
+Turns one Discord channel into your Halcyon leadership team. You message the channel; the router picks 1–3 personas to chime in. @-mention to address one directly.
 
-That's the Discord side done.
+### Setup — Discord side (~5 min)
 
----
+1. Create a server (or use existing). Discord app → `+` → "Create My Own".
+2. Create a text channel `#halcyon-leadership`.
+3. Enable Developer Mode (Settings → Advanced) → right-click channel → "Copy Channel ID".
+4. Create **10 webhooks** on that channel (Channel settings → Integrations → Webhooks). Copy each URL.
+5. Create a bot at <https://discord.com/developers/applications> → "New Application" → "Bot" → "Reset Token".
+6. Enable **Message Content Intent** on the Bot page.
+7. OAuth2 → URL Generator → scopes: `bot`; perms: `Read Messages/View Channels`, `Read Message History`. Authorize into your server.
 
-## Setup — local
+### Setup — local
 
 ```bash
-git clone https://github.com/zeeshan8281/halcyon.git halcyon-hq
-cd halcyon-hq
+git clone https://github.com/zeeshan8281/halcyon.git
+cd halcyon
 cp .env.example .env
-# Fill in: OPENROUTER_API_KEY, DISCORD_BOT_TOKEN, DISCORD_CHANNEL_ID, all 9 WEBHOOK_*
+# Fill in: OPENROUTER_API_KEY, DISCORD_BOT_TOKEN, DISCORD_CHANNEL_ID, all 10 WEBHOOK_*
 npm install
 npm run dev
 ```
 
-You should see `[ready] logged in as Halcyon HQ#XXXX` in your terminal.
+`[ready] logged in as Halcyon HQ#XXXX` → type something in `#halcyon-leadership` → personas reply.
 
-Type something in `#halcyon-leadership`. Within a few seconds, 1–3 personas reply.
-
----
-
-## Usage
+### Usage
 
 - **Talk to the room.** Plain message → router picks who chimes in.
-- **Talk to one person.** Include `@maya` or `@maya chen` anywhere in the message (no Discord ping needed — it's a text match).
-- **Multi-mention.** `@theo @sam` will trigger both, in order.
-- **History.** All messages saved to `logs/messages.jsonl`. On restart, the last 30 are reloaded into context so the conversation feels continuous.
+- **Talk to one.** `@maya` or `@maya chen` anywhere in the message.
+- **Multi-mention.** `@theo @sam` triggers both.
+- **History.** All saved to `logs/messages.jsonl`. Last 30 reloaded on restart.
 
-### `CHIME_IN` toggle
+`CHIME_IN=true` (default) — personas auto-chime. `CHIME_IN=false` — silent unless @-mentioned.
 
-In `.env`:
-- `CHIME_IN=true` (default) — personas chime in on plain messages.
-- `CHIME_IN=false` — silent unless @-mentioned.
-
----
-
-## The cast
+### The cast
 
 | @ | Name | Role |
 |---|---|---|
@@ -65,30 +69,44 @@ In `.env`:
 | @sam | Sam Reyes | Head of Product |
 | @wren | Wren Halloway | Head of Knowledge |
 | @lena | Lena Vasquez | Head of LP Relations |
+| @nico | Nico Tran | Head of Community |
 | @diego | Diego Park | Head of Capital Partnerships |
 
-Each persona's voice + domain is defined in `src/personas.ts`. Edit there to tune.
+Voices + domains defined in `src/personas.ts`.
+
+### Cost
+
+- ~$0.001 router (Haiku) + ~$0.01 per persona reply (Sonnet) → **≈$0.01–0.04 per turn**.
 
 ---
 
-## Cost notes
+## Trading agent + dashboard — quick start
 
-- One CEO message → 1 router call (Haiku, ~$0.001) + 1–3 persona calls (Sonnet, ~$0.01 each).
-- Typical turn: **≈$0.01–0.04**.
-- Hosting: free (runs on your laptop). To keep it always-on, host on Railway/Render (~$5/mo).
+Lives under [`agent/`](./agent). See [`agent/README.md`](./agent/README.md) for the full setup (Hyperliquid keys, vault binding, dashboard).
+
+```bash
+cd agent
+cp .env.example .env
+# Fill HL_PRIVATE_KEY, HL_VAULT_ADDRESS, etc.
+npm install && npm run dev      # backend (the agent loop)
+cd frontend && npm install && npm run dev   # dashboard
+```
+
+The dashboard talks to the agent's HTTP server and renders the public terminal UI — positions, vault, ticker, decisions feed, tweets, depositors.
 
 ---
 
-## Files
+## Deploys
 
-```
-src/
-  index.ts         entry — loads .env, starts orchestrator
-  orchestrator.ts  Discord client + message routing + webhook posting
-  router.ts        cheap Claude call: who should chime in?
-  personas.ts      9 character definitions + system prompts
-  claude.ts        OpenRouter (OpenAI SDK) wrapper — talks to Claude
-  log.ts           JSONL persistence + load-on-boot
-logs/
-  messages.jsonl   the channel transcript (gitignored)
-```
+Both pieces ship to Railway via the CLI (`railway up`) from their respective working directories:
+
+- **`halcyon-bot`** — deployed from the root of this repo.
+- **`halcyon-agent`** — deployed from `agent/`.
+
+Secrets are managed per-service in Railway (`.env` files are gitignored).
+
+---
+
+## License
+
+Source-available, no resale. Brand is reserved.

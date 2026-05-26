@@ -1,0 +1,31 @@
+{
+  "name": "agentic-micro-hedge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:backend": "tsx watch src/index.ts",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev": "concurrently -n backend,frontend -c blue,magenta \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build:backend": "tsc -p .",
+    "build:frontend": "npm --prefix frontend run build",
+    "build": "npm run build:backend && npm run build:frontend",
+    "start": "npm run build:frontend && tsx src/index.ts",
+    "run:built": "node dist/index.js",
+    "typecheck": "tsc --noEmit -p . && npm --prefix frontend run typecheck",
+    "gen-key": "node bin/gen-key.mjs"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "hyperliquid": "^1.7.0",
+    "openai": "^6.34.0",
+    "twitter-api-v2": "^1.18.0",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "concurrently": "^9.2.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
