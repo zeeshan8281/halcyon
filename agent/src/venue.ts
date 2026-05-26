@@ -70,9 +70,22 @@ export class HyperliquidVenue implements VenueLike {
     return out;
   }
 
+  private async getClearinghouseStateSafe(): Promise<any | null> {
+    try {
+      return await this.sdk.info.perpetuals.getClearinghouseState(this.vaultAddress);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // 401 "User not found" → the vault address has no HL account (demo /
+      // dashboard-only mode). Return null and let callers degrade gracefully.
+      if (msg.includes("401") || msg.includes("User not found")) return null;
+      throw e;
+    }
+  }
+
   async positions(): Promise<Record<string, Position>> {
-    const state: any = await this.sdk.info.perpetuals.getClearinghouseState(this.vaultAddress);
+    const state = await this.getClearinghouseStateSafe();
     const out: Record<string, Position> = {};
+    if (!state) return out;
     for (const p of state.assetPositions ?? []) {
       const pos = p.position ?? p;
       const sz = Number(pos.szi ?? 0);
@@ -90,8 +103,8 @@ export class HyperliquidVenue implements VenueLike {
   }
 
   async accountValue(): Promise<number> {
-    const state: any = await this.sdk.info.perpetuals.getClearinghouseState(this.vaultAddress);
-    return Number(state.marginSummary?.accountValue ?? 0);
+    const state = await this.getClearinghouseStateSafe();
+    return Number(state?.marginSummary?.accountValue ?? 0);
   }
 
   async vaultStats(): Promise<VaultStats | null> {
