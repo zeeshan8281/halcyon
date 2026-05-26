@@ -9,6 +9,7 @@ export type TranscriptItem = {
   authorName: string;
   role: string; // "CEO" or persona role
   content: string;
+  channelId?: string; // discord channel id (undefined for legacy entries)
 };
 
 export function appendLog(item: TranscriptItem): void {

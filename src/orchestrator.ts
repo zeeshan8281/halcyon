@@ -43,10 +43,26 @@ console.log(
   `[boot] leadership channels: ${[...LEADERSHIP_CHANNELS].join(", ") || "(none)"}; community channels: ${[...COMMUNITY_CHANNELS].join(", ") || "(none)"}`,
 );
 
-const webhooks = new Map<string, WebhookClient>();
+// Per-persona webhooks (legacy / leadership): one webhook per persona, bound to
+// the channel where the user created it. Posts always land there.
+const personaWebhooks = new Map<string, WebhookClient>();
 for (const p of ACTIVE) {
-  webhooks.set(p.id, new WebhookClient({ url: process.env[p.webhookEnv]! }));
+  const url = process.env[p.webhookEnv];
+  if (url) personaWebhooks.set(p.id, new WebhookClient({ url }));
 }
+
+// Per-channel webhooks: one shared webhook per channel. All personas post via
+// it, with their name + avatar overridden per-post. Env vars are
+// CHANNEL_WEBHOOK_<channelId>=<url>.
+const channelWebhooks = new Map<string, WebhookClient>();
+for (const [key, val] of Object.entries(process.env)) {
+  if (!key.startsWith("CHANNEL_WEBHOOK_") || !val) continue;
+  const channelId = key.slice("CHANNEL_WEBHOOK_".length);
+  channelWebhooks.set(channelId, new WebhookClient({ url: val }));
+}
+console.log(
+  `[boot] persona webhooks: ${personaWebhooks.size}; channel webhooks: ${[...channelWebhooks.keys()].join(", ") || "(none)"}`,
+);
 
 const transcript: TranscriptItem[] = loadRecent(HISTORY_LIMIT);
 console.log(`[boot] loaded ${transcript.length} prior messages`);
@@ -57,11 +73,16 @@ function record(item: TranscriptItem) {
   appendLog(item);
 }
 
-function buildMessagesFor(persona: Persona): ChatMsg[] {
+function buildMessagesFor(persona: Persona, channelId?: string): ChatMsg[] {
   // Render transcript as Claude alternating-role messages for THIS persona.
   // - Messages authored by this persona → assistant
   // - Everything else (CEO + other personas) → user, prefixed with "[Name (Role)]: ..."
-  const raw: ChatMsg[] = transcript.map((item) => {
+  // Channel-scoped: only consider transcript items from the same channel. Legacy
+  // entries without channelId fall through (they predate scoping).
+  const scoped = channelId
+    ? transcript.filter((it) => !it.channelId || it.channelId === channelId)
+    : transcript;
+  const raw: ChatMsg[] = scoped.map((item) => {
     if (item.authorId === persona.id) {
       return { role: "assistant" as const, content: item.content };
     }
@@ -90,10 +111,14 @@ function buildMessagesFor(persona: Persona): ChatMsg[] {
   return merged;
 }
 
-async function postAs(persona: Persona, content: string) {
-  const hook = webhooks.get(persona.id);
+async function postAs(persona: Persona, content: string, channelId: string) {
+  // Prefer the channel webhook (so the post lands in the channel the message
+  // came from). Fall back to the persona's own webhook (legacy).
+  const hook = channelWebhooks.get(channelId) ?? personaWebhooks.get(persona.id);
   if (!hook) {
-    console.warn(`[skip] ${persona.name} webhook not configured`);
+    console.warn(
+      `[skip] ${persona.name}: no webhook for channel ${channelId} and no persona fallback`,
+    );
     return;
   }
   // Discord webhook content limit is 2000 chars.
@@ -109,12 +134,13 @@ async function postAs(persona: Persona, content: string) {
     authorName: persona.name,
     role: persona.role,
     content: truncated,
+    channelId,
   });
 }
 
-async function runPersona(persona: Persona) {
+async function runPersona(persona: Persona, channelId: string) {
   try {
-    const messages = buildMessagesFor(persona);
+    const messages = buildMessagesFor(persona, channelId);
     const reply = await callClaude({
       model: MODEL_PERSONA,
       system: persona.system,
@@ -122,7 +148,7 @@ async function runPersona(persona: Persona) {
       maxTokens: 500,
     });
     if (!reply) return;
-    await postAs(persona, reply);
+    await postAs(persona, reply, channelId);
   } catch (err) {
     console.error(`[${persona.id}] error:`, err);
   }
@@ -136,6 +162,7 @@ async function handleCeoMessage(text: string, channelId: string) {
     authorName: isCommunity ? "Community" : "Zeeshan",
     role: isCommunity ? "Visitor" : "CEO",
     content: text,
+    channelId,
   });
 
   let speakers: Persona[];
@@ -152,18 +179,18 @@ async function handleCeoMessage(text: string, channelId: string) {
     // Leadership channel: existing routing (mentions → router → all personas).
     speakers = matchMentions(text, ACTIVE);
     if (speakers.length === 0 && CHIME_IN) {
-      const recent = buildMessagesFor({ id: "__none__" } as Persona).slice(-12);
+      const recent = buildMessagesFor({ id: "__none__" } as Persona, channelId).slice(-12);
       speakers = await routeMessage({ model: MODEL_ROUTER, recent, roster: ACTIVE });
     }
   }
 
   if (speakers.length === 0) return;
 
-  console.log(`[route] -> ${speakers.map((s) => s.name).join(", ")}`);
+  console.log(`[route] channel=${channelId} -> ${speakers.map((s) => s.name).join(", ")}`);
 
   // Speak sequentially so later personas can see earlier ones.
   for (const p of speakers) {
-    await runPersona(p);
+    await runPersona(p, channelId);
     await new Promise((r) => setTimeout(r, 600));
   }
 }
