@@ -11,14 +11,37 @@ console.log(`[boot] active personas: ${ACTIVE.map((p) => p.name).join(", ")}`);
 const CHIME_IN = (process.env.CHIME_IN ?? "true").toLowerCase() === "true";
 const MODEL_PERSONA = process.env.MODEL_PERSONA ?? "anthropic/claude-sonnet-4.5";
 const MODEL_ROUTER = process.env.MODEL_ROUTER ?? "anthropic/claude-haiku-4.5";
-const CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
-const COMMUNITY_CHANNEL_ID = process.env.DISCORD_COMMUNITY_CHANNEL_ID;
+const parseIds = (v: string | undefined) =>
+  (v ?? "")
+    .split(/[,\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+// Internal/leadership channels (multi-persona routing). Accepts CSV list.
+// Backward-compat: also reads singular DISCORD_CHANNEL_ID.
+const LEADERSHIP_CHANNELS = new Set([
+  ...parseIds(process.env.DISCORD_LEADERSHIP_CHANNEL_IDS),
+  ...parseIds(process.env.DISCORD_CHANNEL_ID),
+]);
+
+// Community channels (only the community persona responds). Accepts CSV list.
+// Backward-compat: also reads singular DISCORD_COMMUNITY_CHANNEL_ID.
+const COMMUNITY_CHANNELS = new Set([
+  ...parseIds(process.env.DISCORD_COMMUNITY_CHANNEL_IDS),
+  ...parseIds(process.env.DISCORD_COMMUNITY_CHANNEL_ID),
+]);
+
 const COMMUNITY_PERSONA_ID = process.env.COMMUNITY_PERSONA_ID ?? "nico";
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const HISTORY_LIMIT = 30;
 
 if (!BOT_TOKEN) throw new Error("DISCORD_BOT_TOKEN missing in .env");
-if (!CHANNEL_ID) throw new Error("DISCORD_CHANNEL_ID missing in .env");
+if (LEADERSHIP_CHANNELS.size === 0) {
+  throw new Error("No leadership channels configured (DISCORD_LEADERSHIP_CHANNEL_IDS or DISCORD_CHANNEL_ID)");
+}
+console.log(
+  `[boot] leadership channels: ${[...LEADERSHIP_CHANNELS].join(", ") || "(none)"}; community channels: ${[...COMMUNITY_CHANNELS].join(", ") || "(none)"}`,
+);
 
 const webhooks = new Map<string, WebhookClient>();
 for (const p of ACTIVE) {
@@ -106,7 +129,7 @@ async function runPersona(persona: Persona) {
 }
 
 async function handleCeoMessage(text: string, channelId: string) {
-  const isCommunity = channelId === COMMUNITY_CHANNEL_ID;
+  const isCommunity = COMMUNITY_CHANNELS.has(channelId);
   record({
     ts: new Date().toISOString(),
     authorId: "ceo",
@@ -161,10 +184,10 @@ client.on("messageCreate", async (msg: Message) => {
   console.log(
     `[msg] channel=${msg.channelId} author=${msg.author.tag} bot=${msg.author.bot} webhook=${!!msg.webhookId} text="${msg.content.slice(0, 60)}"`,
   );
-  const isLeadership = msg.channelId === CHANNEL_ID;
-  const isCommunity = COMMUNITY_CHANNEL_ID && msg.channelId === COMMUNITY_CHANNEL_ID;
+  const isLeadership = LEADERSHIP_CHANNELS.has(msg.channelId);
+  const isCommunity = COMMUNITY_CHANNELS.has(msg.channelId);
   if (!isLeadership && !isCommunity) {
-    console.log(`[skip] channel mismatch (expected ${CHANNEL_ID}${COMMUNITY_CHANNEL_ID ? " or " + COMMUNITY_CHANNEL_ID : ""})`);
+    console.log(`[skip] channel ${msg.channelId} not in allowlist`);
     return;
   }
   if (msg.webhookId) return;
